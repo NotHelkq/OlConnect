@@ -22,8 +22,8 @@ android {
         applicationId = "io.github.oleglog.olcrtc.client"
         minSdk = 26
         targetSdk = 36
-        versionCode = 95
-        versionName = "1.6.5"
+        versionCode = 96
+        versionName = "1.6.6"
         val expectedSigningCertSha256 = providers.gradleProperty("androidSigningCertSha256")
             .orElse(providers.environmentVariable("ANDROID_SIGNING_CERT_SHA256"))
             .orNull

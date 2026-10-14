@@ -1236,26 +1236,43 @@ class OlcrtcVpnService : VpnService() {
     }
 
     private fun isPacketAllowedForPerApp(packet: ByteArray): Boolean {
-        if (packet.size < 20) return true
+        val perAppPolicy = routingSettings.getPerAppPolicy()
+        val rules = profiles.getEnabledRoutingRules()
+        val packageRules = rules.filter { it.matchType == RoutingRule.MatchType.PACKAGE && it.enabled }
+        val isPerAppActive = perAppPolicy.mode != PerAppPolicy.Mode.ALL || packageRules.isNotEmpty()
+
+        if (!isPerAppActive) {
+            return true
+        }
+
+        if (packet.size < 20) return false
         val version = packet[0].toInt() ushr 4
-        if (version != 4) return true
+        if (version != 4) return false
         val ihl = (packet[0].toInt() and 0x0f) * 4
-        if (packet.size < ihl + 4) return true
+        if (packet.size < ihl + 4) return false
 
         val protocol = packet[9].toInt() and 0xff
         if (protocol != 6 && protocol != 17) {
-            return true
+            return false
         }
 
         val srcPort = ((packet[ihl].toInt() and 0xff) shl 8) or (packet[ihl + 1].toInt() and 0xff)
         val dstPort = ((packet[ihl + 2].toInt() and 0xff) shl 8) or (packet[ihl + 3].toInt() and 0xff)
 
-        if (dstPort == 53) return true
+        val srcIpInt = ((packet[12].toLong() and 0xff) shl 24) or
+                       ((packet[13].toLong() and 0xff) shl 16) or
+                       ((packet[14].toLong() and 0xff) shl 8) or
+                       (packet[15].toLong() and 0xff)
+        val dstIpInt = ((packet[16].toLong() and 0xff) shl 24) or
+                       ((packet[17].toLong() and 0xff) shl 16) or
+                       ((packet[18].toLong() and 0xff) shl 8) or
+                       (packet[19].toLong() and 0xff)
+        val ports = (srcPort.toLong() shl 16) or (dstPort.toLong() and 0xffffL)
+        val cacheKey = protocol.toLong() * 31L + ports * 37L + srcIpInt * 41L + dstIpInt * 43L
 
-        val cacheKey = (protocol.toLong() shl 32) or (srcPort.toLong() shl 16) or (dstPort.toLong() and 0xffffL)
         packetFilterCache.get(cacheKey)?.let { return it }
 
-        val allowed = checkPacketAllowed(protocol, packet, srcPort, dstPort)
+        val allowed = checkPacketAllowed(protocol, packet, srcPort, dstPort, perAppPolicy, packageRules)
         packetFilterCache.put(cacheKey, allowed)
         return allowed
     }
@@ -1265,15 +1282,9 @@ class OlcrtcVpnService : VpnService() {
         packet: ByteArray,
         srcPort: Int,
         dstPort: Int,
+        perAppPolicy: PerAppPolicy,
+        packageRules: List<RoutingRule>,
     ): Boolean {
-        val perAppPolicy = routingSettings.getPerAppPolicy()
-        val rules = profiles.getEnabledRoutingRules()
-        val packageRules = rules.filter { it.matchType == RoutingRule.MatchType.PACKAGE && it.enabled }
-
-        if (perAppPolicy.mode == PerAppPolicy.Mode.ALL && packageRules.isEmpty()) {
-            return true
-        }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val srcIp = InetAddress.getByAddress(packet.copyOfRange(12, 16))
@@ -1283,7 +1294,9 @@ class OlcrtcVpnService : VpnService() {
 
                 val ownerUid = connectivity.getConnectionOwnerUid(protocol, localAddress, remoteAddress)
                 if (ownerUid == android.os.Process.INVALID_UID || ownerUid <= 0) {
-                    return true
+                    // Excluded or unmanaged apps binding to tun0 return INVALID_UID.
+                    // When split-tunneling is active, drop them to prevent server IP leak (Issue #5).
+                    return false
                 }
 
                 if (ownerUid == android.os.Process.myUid()) {
@@ -1292,7 +1305,7 @@ class OlcrtcVpnService : VpnService() {
 
                 val packageNames = packageManager.getPackagesForUid(ownerUid)
                 if (packageNames.isNullOrEmpty()) {
-                    return true
+                    return false
                 }
 
                 for (pkg in packageNames) {
@@ -1311,7 +1324,7 @@ class OlcrtcVpnService : VpnService() {
                     PerAppPolicy.Mode.ONLY_SELECTED -> packageNames.any { perAppPolicy.packages.contains(it) }
                 }
             } catch (_: Throwable) {
-                return true
+                return false
             }
         }
         return true
