@@ -48,6 +48,10 @@ class ProfileEditorDialogTest {
             listOf(OlcrtcProfile.Transport.DATACHANNEL),
             compatibleTransports(OlcrtcProfile.Provider.JITSI),
         )
+        assertEquals(
+            listOf(OlcrtcProfile.Transport.DATACHANNEL),
+            compatibleTransports(OlcrtcProfile.Provider.VK),
+        )
         OlcrtcProfile.Provider.entries.forEach { provider ->
             OlcrtcProfile.Transport.entries.forEach { transport ->
                 assertEquals(

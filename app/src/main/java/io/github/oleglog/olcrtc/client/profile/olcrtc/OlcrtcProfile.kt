@@ -30,11 +30,12 @@ data class OlcrtcProfile(
     enum class Provider(val value: String) {
         WBSTREAM("wbstream"),
         TELEMOST("telemost"),
-        JITSI("jitsi");
+        JITSI("jitsi"),
+        VK("vk");
 
         fun supports(transport: Transport): Boolean = when (this) {
             WBSTREAM, TELEMOST -> transport == Transport.VP8CHANNEL
-            JITSI -> transport == Transport.DATACHANNEL
+            JITSI, VK -> transport == Transport.DATACHANNEL
         }
 
         companion object {

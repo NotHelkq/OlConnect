@@ -64,6 +64,7 @@ internal data class NativeOlcrtcConfig(
                 // signaling-only carrier; allow it the same budget as wbstream
                 // instead of the 15s default which fires false-ready timeouts.
                 OlcrtcProfile.Provider.JITSI -> JITSI_READY_TIMEOUT_MILLIS
+                OlcrtcProfile.Provider.VK -> VK_READY_TIMEOUT_MILLIS
                 OlcrtcProfile.Provider.TELEMOST -> DEFAULT_READY_TIMEOUT_MILLIS
             },
         )
@@ -71,5 +72,6 @@ internal data class NativeOlcrtcConfig(
         const val DEFAULT_READY_TIMEOUT_MILLIS = 15_000
         const val WBSTREAM_READY_TIMEOUT_MILLIS = 45_000
         const val JITSI_READY_TIMEOUT_MILLIS = 45_000
+        const val VK_READY_TIMEOUT_MILLIS = 45_000
     }
 }

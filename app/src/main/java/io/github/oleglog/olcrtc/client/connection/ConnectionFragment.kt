@@ -1560,6 +1560,7 @@ internal fun connectionTypeLabel(type: String, endpoint: String): String = when 
         "wbstream" -> "WBStream"
         "telemost" -> "Telemost"
         "jitsi" -> "Jitsi"
+        "vk" -> "VK Calls"
         else -> "olcRTC"
     }
     "openflux" -> {
