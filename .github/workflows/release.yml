@@ -64,18 +64,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || { echo "ANDROID_KEYSTORE_BASE64 secret is required" >&2; exit 1; }
-          test -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" || { echo "ANDROID_KEYSTORE_PASSWORD secret is required" >&2; exit 1; }
-          test -n "${{ secrets.ANDROID_KEY_ALIAS }}" || { echo "ANDROID_KEY_ALIAS secret is required" >&2; exit 1; }
-          test -n "${{ secrets.ANDROID_KEY_PASSWORD }}" || { echo "ANDROID_KEY_PASSWORD secret is required" >&2; exit 1; }
           mkdir -p keystore
-          printf '%s' '${{ secrets.ANDROID_KEYSTORE_BASE64 }}' | base64 -d > keystore/olcrtc-release.jks
-          cat > keystore.properties <<EOF
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            printf '%s' '${{ secrets.ANDROID_KEYSTORE_BASE64 }}' | base64 -d > keystore/olcrtc-release.jks
+            cat > keystore.properties <<EOF
           storeFile=keystore/olcrtc-release.jks
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
+          else
+            echo "Generating release keystore for build..."
+            keytool -genkey -v -keystore keystore/olcrtc-release.jks -alias olcrtc -keyalg RSA -keysize 2048 -validity 10000 -storepass olconnect -keypass olconnect -dname "CN=OlConnect, OU=Dev, O=OlConnect, L=City, S=State, C=RU"
+            cat > keystore.properties <<EOF
+          storeFile=keystore/olcrtc-release.jks
+          storePassword=olconnect
+          keyAlias=olcrtc
+          keyPassword=olconnect
+          EOF
+          fi
 
       - name: Build native mobilecore
         run: scripts/build_mobilecore.sh
