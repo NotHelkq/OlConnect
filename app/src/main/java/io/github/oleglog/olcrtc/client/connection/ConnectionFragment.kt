@@ -554,8 +554,7 @@ class ConnectionFragment : Fragment() {
     private fun showVkAuthRequiredDialog(profileId: Long, olcrtc: OlcrtcProfile) {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("Авторизация VK")
-            .setMessage("Для звонка VK требуется разовая проверка:
-войдите в аккаунт или решите капчу.")
+            .setMessage("Для звонка VK требуется разовая проверка: войдите в аккаунт или решите капчу.")
             .setPositiveButton("Войти в VK") { _, _ ->
                 VkAuthDialog.show(requireContext(), mode = VkAuthDialog.Mode.LOGIN) { token ->
                     saveVkTokenAndConnect(profileId, token)
@@ -586,7 +585,7 @@ class ConnectionFragment : Fragment() {
                                 ex.onSuccess { callToken ->
                                     saveVkTokenAndConnect(profileId, callToken)
                                 }.onFailure {
-                                    showStatus("Ошибка проверки: ${it.message}")
+                                    showStatus("Ошибка проверки: " + (it.message ?: "неизвестно"))
                                 }
                             }
                         }
@@ -596,19 +595,16 @@ class ConnectionFragment : Fragment() {
                     }
                 }
             }.onFailure {
-                showStatus("Ошибка VK: ${it.message}")
+                showStatus("Ошибка VK: " + (it.message ?: "неизвестно"))
             }
         }
     }
 
     private fun saveVkTokenAndConnect(profileId: Long, token: String) {
         storage.execute {
-            val original = profiles.findProfile(profileId)
-            val updated = (original as? ProfileConfig.Olcrtc)?.let { p ->
-                p.copy(value = p.value.copy(roomPassword = token))
-            }
-            if (updated != null) {
-                profiles.updateProfile(profileId, updated)
+            val original = profiles.getOlcrtc(profileId)
+            if (original != null) {
+                profiles.update(profileId, original.copy(roomPassword = token))
             }
             activity?.runOnUiThread {
                 activityHost.requestVpnPermission(profileId)
