@@ -44,11 +44,24 @@ internal data class NativeOlcrtcConfig(
             socksPort: Int,
             dns: DnsEndpoint,
             udpRelay: Boolean = false,
-        ) = NativeOlcrtcConfig(
-            provider = profile.provider.value,
-            transport = profile.transport.value,
-            compatibilityMode = profile.compatibilityMode.value,
-            roomId = profile.roomId,
+        ): NativeOlcrtcConfig {
+            val resolvedRoomId = if (!profile.roomPassword.isNullOrBlank()) {
+                val pass = profile.roomPassword.trim()
+                if (!profile.roomId.contains("token=") && !profile.roomId.contains("call_token=") && !profile.roomId.contains("auth_token=") && !profile.roomId.contains("rp=")) {
+                    val sep = if (profile.roomId.contains("?")) "&" else "?"
+                    "${profile.roomId}${sep}token=$pass"
+                } else {
+                    profile.roomId
+                }
+            } else {
+                profile.roomId
+            }
+
+            return NativeOlcrtcConfig(
+                provider = profile.provider.value,
+                transport = profile.transport.value,
+                compatibilityMode = profile.compatibilityMode.value,
+                roomId = resolvedRoomId,
             clientId = profile.clientId,
             keyHex = profile.keyHex,
             dnsServer = dns.toString(),
@@ -67,7 +80,8 @@ internal data class NativeOlcrtcConfig(
                 OlcrtcProfile.Provider.VK -> VK_READY_TIMEOUT_MILLIS
                 OlcrtcProfile.Provider.TELEMOST -> DEFAULT_READY_TIMEOUT_MILLIS
             },
-        )
+            )
+        }
 
         const val DEFAULT_READY_TIMEOUT_MILLIS = 15_000
         const val WBSTREAM_READY_TIMEOUT_MILLIS = 45_000

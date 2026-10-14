@@ -136,4 +136,4 @@ replace github.com/zarazaex69/j => github.com/Oleglog/j v0.0.0-20260813164759-98
 // this is a replace — not a second require. The fork-only commits do not
 // exist upstream, so the openlibrecommunity pseudo-version above would not
 // resolve without it. CI's `go mod tidy` keeps go.sum for the replacement.
-replace github.com/openlibrecommunity/olcrtc => github.com/NotHelkq/OlConnect_manager v0.0.0-20261014182142-57dfe86f31f1
+replace github.com/openlibrecommunity/olcrtc => github.com/NotHelkq/OlConnect_manager v0.0.0-20261014190709-0c062c0ec1a6

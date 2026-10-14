@@ -14,7 +14,7 @@ object OlcrtcUri {
         "vp8_batch", "b",
         "client_id", "c",
         "dns", "d",
-        "room_password", "rp",
+        "room_password", "rp", "token", "auth_token",
         "keepalive", "ka",
     )
 
@@ -54,7 +54,7 @@ object OlcrtcUri {
             transport = transport,
             compatibilityMode = compatibilityMode,
             roomId = roomId,
-            roomPassword = parameter(params, "room_password", "rp"),
+            roomPassword = parameter(params, "room_password", "rp", "token", "auth_token"),
             clientId = clientId,
             keyHex = keyHex,
             dnsServer = parameter(params, "dns", "d")?.takeIf(String::isNotBlank),

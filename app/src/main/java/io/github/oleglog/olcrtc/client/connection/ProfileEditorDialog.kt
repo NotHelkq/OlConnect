@@ -129,12 +129,21 @@ internal object ProfileEditorDialog {
             compatibleTransports(provider.selected),
             profile.transport,
         )
+        val roomId = field(fragment, form, R.string.profile_field_room_id, profile.roomId)
+        val roomPassword = field(fragment, form, R.string.profile_field_room_password, profile.roomPassword.orEmpty(), secret = true)
+        fun updatePasswordHint() {
+            if (provider.selected == OlcrtcProfile.Provider.VK) {
+                roomPassword.layout.hint = "Токен / Cookie VK (второй аккаунт)"
+            } else {
+                roomPassword.layout.hint = fragment.getString(R.string.profile_field_room_password)
+            }
+        }
+        updatePasswordHint()
         provider.onSelectionChanged {
             val allowed = compatibleTransports(provider.selected)
             transport.retainOrDefault(allowed)
+            updatePasswordHint()
         }
-        val roomId = field(fragment, form, R.string.profile_field_room_id, profile.roomId)
-        val roomPassword = field(fragment, form, R.string.profile_field_room_password, profile.roomPassword.orEmpty(), secret = true)
         val clientId = field(fragment, form, R.string.profile_field_client_id, profile.clientId)
         val key = field(fragment, form, R.string.profile_field_key, profile.keyHex, secret = true)
         val dns = field(fragment, form, R.string.profile_field_dns, profile.dnsServer.orEmpty())
