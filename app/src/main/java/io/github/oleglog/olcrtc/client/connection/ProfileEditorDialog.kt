@@ -18,6 +18,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import io.github.oleglog.olcrtc.client.R
 import io.github.oleglog.olcrtc.client.data.ProfileConfig
 import io.github.oleglog.olcrtc.client.profile.olcrtc.OlcrtcProfile
@@ -131,11 +133,84 @@ internal object ProfileEditorDialog {
         )
         val roomId = field(fragment, form, R.string.profile_field_room_id, profile.roomId)
         val roomPassword = field(fragment, form, R.string.profile_field_room_password, profile.roomPassword.orEmpty(), secret = true)
+
+        val vkButtonsContainer = LinearLayout(fragment.requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (provider.selected == OlcrtcProfile.Provider.VK) View.VISIBLE else View.GONE
+            setPadding(0, 4.dp(fragment), 0, 8.dp(fragment))
+        }
+
+        val vkLoginBtn = com.google.android.material.button.MaterialButton(fragment.requireContext()).apply {
+            text = "Войти через VK (в приложении)"
+            setOnClickListener {
+                VkAuthDialog.show(fragment.requireContext(), mode = VkAuthDialog.Mode.LOGIN) { token ->
+                    roomPassword.setValue(token)
+                    com.google.android.material.snackbar.Snackbar.make(form, "VK авторизован!", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        val vkCaptchaBtn = com.google.android.material.button.MaterialButton(
+            fragment.requireContext(),
+            null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle,
+        ).apply {
+            text = "Пройти капчу VK (анонимно)"
+            setOnClickListener {
+                val currentRoom = roomId.value()
+                if (currentRoom.isBlank()) {
+                    com.google.android.material.snackbar.Snackbar.make(form, "Сначала укажите ссылку на комнату VK", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                fragment.viewLifecycleOwner.lifecycleScope.launch {
+                    val progress = com.google.android.material.dialog.MaterialAlertDialogBuilder(fragment.requireContext())
+                        .setMessage("Получение капчи VK...")
+                        .setCancelable(false)
+                        .show()
+                    val res = VkAuthHelper.fetchCaptchaChallenge(currentRoom)
+                    progress.dismiss()
+                    res.onSuccess { challengeResult ->
+                        when (challengeResult) {
+                            is VkAuthHelper.CaptchaResult.Challenge -> {
+                                VkAuthDialog.show(
+                                    fragment.requireContext(),
+                                    mode = VkAuthDialog.Mode.CAPTCHA,
+                                    initialUrl = challengeResult.challenge.redirectUri,
+                                ) { successToken ->
+                                    fragment.viewLifecycleOwner.lifecycleScope.launch {
+                                        val ex = VkAuthHelper.exchangeSuccessToken(challengeResult.challenge, successToken)
+                                        ex.onSuccess { callToken ->
+                                            roomPassword.setValue(callToken)
+                                            com.google.android.material.snackbar.Snackbar.make(form, "Капча пройдена! Токен звонка получен.", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
+                                        }.onFailure {
+                                            com.google.android.material.snackbar.Snackbar.make(form, "Ошибка проверки: ${it.message}", com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            }
+                            is VkAuthHelper.CaptchaResult.Token -> {
+                                roomPassword.setValue(challengeResult.callToken)
+                                com.google.android.material.snackbar.Snackbar.make(form, "Токен звонка получен!", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
+                            }
+                        }
+                    }.onFailure {
+                        com.google.android.material.snackbar.Snackbar.make(form, "Ошибка: ${it.message}", com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+        vkButtonsContainer.addView(vkLoginBtn)
+        vkButtonsContainer.addView(vkCaptchaBtn)
+        form.addView(vkButtonsContainer)
+
         fun updatePasswordHint() {
             if (provider.selected == OlcrtcProfile.Provider.VK) {
-                roomPassword.layout.hint = "Токен / Cookie VK (второй аккаунт)"
+                roomPassword.layout.hint = "Токен / Cookie VK"
+                vkButtonsContainer.visibility = View.VISIBLE
             } else {
                 roomPassword.layout.hint = fragment.getString(R.string.profile_field_room_password)
+                vkButtonsContainer.visibility = View.GONE
             }
         }
         updatePasswordHint()

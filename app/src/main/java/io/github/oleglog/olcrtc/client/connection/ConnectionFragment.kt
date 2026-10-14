@@ -39,6 +39,9 @@ import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
 import com.google.android.material.snackbar.Snackbar
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import io.github.oleglog.olcrtc.client.profile.olcrtc.OlcrtcProfile
 import io.github.oleglog.olcrtc.client.MainActivity
 import io.github.oleglog.olcrtc.client.R
 import io.github.oleglog.olcrtc.client.data.ProfileConfig
@@ -533,9 +536,84 @@ class ConnectionFragment : Fragment() {
     }
 
     private fun connectSelected() {
-        selectedProfileId?.let { activityHost.requestVpnPermission(it); return }
+        val selectedId = selectedProfileId
+        if (selectedId != null) {
+            val item = connectionItems.firstOrNull { it.reference == "local:$selectedId" }
+            val olcrtc = (item?.config as? ProfileConfig.Olcrtc)?.value
+            if (olcrtc?.provider == OlcrtcProfile.Provider.VK && olcrtc.roomPassword.isNullOrBlank()) {
+                showVkAuthRequiredDialog(selectedId, olcrtc)
+                return
+            }
+            activityHost.requestVpnPermission(selectedId)
+            return
+        }
         selectedSubscriptionProfileId?.let { activityHost.requestSubscriptionVpnPermission(it); return }
         showStatus(getString(R.string.profile_select_required))
+    }
+
+    private fun showVkAuthRequiredDialog(profileId: Long, olcrtc: OlcrtcProfile) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Авторизация VK")
+            .setMessage("Для звонка VK требуется разовая проверка:
+войдите в аккаунт или решите капчу.")
+            .setPositiveButton("Войти в VK") { _, _ ->
+                VkAuthDialog.show(requireContext(), mode = VkAuthDialog.Mode.LOGIN) { token ->
+                    saveVkTokenAndConnect(profileId, token)
+                }
+            }
+            .setNeutralButton("Пройти капчу") { _, _ ->
+                startVkCaptchaFlow(profileId, olcrtc.roomId)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun startVkCaptchaFlow(profileId: Long, roomId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            showStatus("Получение капчи VK...")
+            val res = VkAuthHelper.fetchCaptchaChallenge(roomId)
+            res.onSuccess { challengeResult ->
+                when (challengeResult) {
+                    is VkAuthHelper.CaptchaResult.Challenge -> {
+                        VkAuthDialog.show(
+                            requireContext(),
+                            mode = VkAuthDialog.Mode.CAPTCHA,
+                            initialUrl = challengeResult.challenge.redirectUri,
+                        ) { successToken ->
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                showStatus("Проверка капчи...")
+                                val ex = VkAuthHelper.exchangeSuccessToken(challengeResult.challenge, successToken)
+                                ex.onSuccess { callToken ->
+                                    saveVkTokenAndConnect(profileId, callToken)
+                                }.onFailure {
+                                    showStatus("Ошибка проверки: ${it.message}")
+                                }
+                            }
+                        }
+                    }
+                    is VkAuthHelper.CaptchaResult.Token -> {
+                        saveVkTokenAndConnect(profileId, challengeResult.callToken)
+                    }
+                }
+            }.onFailure {
+                showStatus("Ошибка VK: ${it.message}")
+            }
+        }
+    }
+
+    private fun saveVkTokenAndConnect(profileId: Long, token: String) {
+        storage.execute {
+            val original = profiles.findProfile(profileId)
+            val updated = (original as? ProfileConfig.Olcrtc)?.let { p ->
+                p.copy(value = p.value.copy(roomPassword = token))
+            }
+            if (updated != null) {
+                profiles.updateProfile(profileId, updated)
+            }
+            activity?.runOnUiThread {
+                activityHost.requestVpnPermission(profileId)
+            }
+        }
     }
 
     private fun testSelectedProfile() {
