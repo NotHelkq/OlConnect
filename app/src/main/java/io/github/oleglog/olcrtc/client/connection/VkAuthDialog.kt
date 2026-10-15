@@ -345,7 +345,7 @@ internal object VkAuthDialog {
                             try { obj = JSON.parse(obj); } catch(e) {}
                         }
                         if (typeof obj === 'object') {
-                            var t = obj.token || obj.success_token;
+                            var t = obj.success_token;
                             if (t && typeof t === 'string' && t.length > 10 && t.indexOf(' ') === -1) {
                                 window.AndroidBridge && window.AndroidBridge.onToken(t);
                                 return;

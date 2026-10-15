@@ -47,12 +47,14 @@ internal data class NativeOlcrtcConfig(
         ): NativeOlcrtcConfig {
             val resolvedRoomId = if (!profile.roomPassword.isNullOrBlank()) {
                 val pass = profile.roomPassword.trim()
-                if (!profile.roomId.contains("token=") && !profile.roomId.contains("call_token=") && !profile.roomId.contains("auth_token=") && !profile.roomId.contains("rp=")) {
-                    val sep = if (profile.roomId.contains("?")) "&" else "?"
-                    "${profile.roomId}${sep}token=$pass"
+                var uri = profile.roomId.trim()
+                if (Regex("""[?&](token|call_token|auth_token|rp)=""").containsMatchIn(uri)) {
+                    uri = uri.replace(Regex("""([?&])(token|call_token|auth_token|rp)=[^&#\s]*"""), "$1token=" + pass)
                 } else {
-                    profile.roomId
+                    val sep = if (uri.contains("?")) "&" else "?"
+                    uri = uri + sep + "token=" + pass
                 }
+                uri
             } else {
                 profile.roomId
             }
