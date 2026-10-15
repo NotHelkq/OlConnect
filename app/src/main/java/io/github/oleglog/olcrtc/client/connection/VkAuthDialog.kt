@@ -31,6 +31,7 @@ import io.github.oleglog.olcrtc.client.R
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 
 internal object VkAuthDialog {
     enum class Mode {
@@ -189,29 +190,29 @@ internal object VkAuthDialog {
             }
         }
 
-        fun extractTokenFromUrl(url: String): String? {
-            if (url.isBlank()) return null
+        fun extractTokenFromUrl(rawUrl: String): String? {
+            if (rawUrl.isBlank()) return null
+            val url = runCatching { URLDecoder.decode(rawUrl, "UTF-8") }.getOrDefault(rawUrl)
 
-            val keys = listOf("success_token", "access_token", "token", "code", "session_token")
-            for (key in keys) {
-                val pattern = Regex("[?&#]" + key + "=([^&#\\s]+)")
-                val match = pattern.find(url)
-                if (match != null) {
-                    val value = match.groupValues[1]
-                    if (value.isNotBlank()) return value
-                }
-            }
+            // Never extract token from initial challenge page
+            if (rawUrl == targetUrl || url == targetUrl) return null
+            if (rawUrl.startsWith("https://id.vk.ru/not_robot_captcha") || url.startsWith("https://id.vk.ru/not_robot_captcha")) return null
 
-            if (url.contains("blank.html")) {
-                val afterBlank = url.substringAfter("blank.html", "").trim('?', '#')
-                if (afterBlank.isNotBlank()) {
-                    if (afterBlank.contains("=")) {
-                        val valPart = afterBlank.substringAfter("=").substringBefore("&")
-                        if (valPart.isNotBlank()) return valPart
-                    } else {
-                        return afterBlank.substringBefore("&")
-                    }
-                }
+            // 1. Check success_token first (VK Captcha completed)
+            val successMatch = Regex("""[?&#]success_token=([^&#\s]+)""").find(url)
+                ?: Regex("""[?&#]success_token=([^&#\s]+)""").find(rawUrl)
+            if (successMatch != null) return successMatch.groupValues[1]
+
+            // 2. Check access_token (OAuth login)
+            val accessMatch = Regex("""[?&#]access_token=([^&#\s]+)""").find(url)
+                ?: Regex("""[?&#]access_token=([^&#\s]+)""").find(rawUrl)
+            if (accessMatch != null) return accessMatch.groupValues[1]
+
+            // 3. Other generic token keys (NEVER session_token!)
+            for (key in listOf("token", "code")) {
+                val match = Regex("""[?&#]$key=([^&#\s]+)""").find(url)
+                    ?: Regex("""[?&#]$key=([^&#\s]+)""").find(rawUrl)
+                if (match != null) return match.groupValues[1]
             }
 
             return null
@@ -223,10 +224,6 @@ internal object VkAuthDialog {
             val token = extractTokenFromUrl(url)
             if (!token.isNullOrBlank()) {
                 deliverToken(token)
-                return true
-            }
-
-            if (url.contains("blank.html")) {
                 return true
             }
 
@@ -289,6 +286,23 @@ internal object VkAuthDialog {
             }
         }, "AndroidBridge")
 
+        val injectJs = """
+            (function() {
+                if (window.__vk_bridge_hooked) return;
+                window.__vk_bridge_hooked = true;
+                window.addEventListener('message', function(e) {
+                    try {
+                        var data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+                        if (data && data.success_token) {
+                            window.AndroidBridge && window.AndroidBridge.onToken(data.success_token);
+                        } else if (data && data.params && data.params.success_token) {
+                            window.AndroidBridge && window.AndroidBridge.onToken(data.params.success_token);
+                        }
+                    } catch(err) {}
+                });
+            })();
+        """.trimIndent()
+
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progressBar.progress = newProgress
@@ -300,12 +314,19 @@ internal object VkAuthDialog {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString().orEmpty()
                 if (checkUrlForTokens(url)) return true
-                if (url.contains("blank.html")) return true
+                if (url.contains("blank.html")) {
+                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                        val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
+                        checkUrlForTokens(cleanHref)
+                    }
+                    return false
+                }
                 return false
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                view?.evaluateJavascript(injectJs, null)
                 url?.let {
                     if (checkUrlForTokens(it)) return
                 }
@@ -314,12 +335,13 @@ internal object VkAuthDialog {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                view?.evaluateJavascript(injectJs, null)
                 url?.let {
                     if (checkUrlForTokens(it)) return
                 }
                 if (url?.contains("blank.html") == true) {
                     view?.evaluateJavascript("window.location.href") { jsHref ->
-                        val cleanHref = jsHref?.trim('"', '\'') ?: ""
+                        val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
                         checkUrlForTokens(cleanHref)
                     }
                 }
@@ -329,6 +351,12 @@ internal object VkAuthDialog {
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 url?.let { checkUrlForTokens(it) }
+                if (url?.contains("blank.html") == true) {
+                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                        val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
+                        checkUrlForTokens(cleanHref)
+                    }
+                }
             }
         }
 
