@@ -17,6 +17,7 @@ internal object VkAuthHelper {
         val anonToken: String,
         val link: String,
         val redirectUri: String,
+        val captchaSid: String = "",
     )
 
     sealed interface CaptchaResult {
@@ -75,10 +76,11 @@ internal object VkAuthHelper {
 
             val error = json2.getJSONObject("error")
             var redirectUri = error.getString("redirect_uri")
+            val captchaSid = error.optString("captcha_sid", "")
             if (!redirectUri.contains("redirect=")) {
                 redirectUri += "&redirect=" + URLEncoder.encode("https://oauth.vk.com/blank.html", "UTF-8")
             }
-            CaptchaResult.Challenge(CaptchaChallenge(anonToken = anonToken, link = link, redirectUri = redirectUri))
+            CaptchaResult.Challenge(CaptchaChallenge(anonToken = anonToken, link = link, redirectUri = redirectUri, captchaSid = captchaSid))
         }
     }
 
@@ -90,6 +92,8 @@ internal object VkAuthHelper {
             val postData = "v=$DEFAULT_VERSION&client_id=$DEFAULT_APP_ID&vk_join_link=" +
                 URLEncoder.encode("https://vk.ru/call/join/${challenge.link}", "UTF-8") +
                 "&name=" + URLEncoder.encode("User", "UTF-8") +
+                "&captcha_sid=" + URLEncoder.encode(challenge.captchaSid, "UTF-8") +
+                "&captcha_key=&is_sound_captcha=0" +
                 "&success_token=" + URLEncoder.encode(successToken, "UTF-8")
             val conn = (URL("https://api.vk.ru/method/calls.getAnonymousToken").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"

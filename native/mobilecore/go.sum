@@ -14,8 +14,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg6
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/NotHelkq/OlConnect_manager v0.0.0-20261015073032-e72652caf5d6 h1:dkMiY5wSCz0TWfFi0rO/9b80mzQmdGEMwIH4K8xu+D0=
-github.com/NotHelkq/OlConnect_manager v0.0.0-20261015073032-e72652caf5d6/go.mod h1:fKmM5Tspj/Ns4/Xmulrp84yrcpYYgateLsudxIE7gQU=
+github.com/NotHelkq/OlConnect_manager v0.0.0-20261015091250-5655c0ee10f8 h1:EgFpBTr0SgtdOPj8W8z11j+NAw1kDxcY/gp5sEQ9jt8=
+github.com/NotHelkq/OlConnect_manager v0.0.0-20261015091250-5655c0ee10f8/go.mod h1:fKmM5Tspj/Ns4/Xmulrp84yrcpYYgateLsudxIE7gQU=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEVMRuU21PR1EtLVZJmdB18Gu3Rw=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
 github.com/Oleglog/j v0.0.0-20260813164759-98b35e399132 h1:0Zjsm3kHA5MztZGwN22UqWIySiHaByCKZuZSKgiBMCU=

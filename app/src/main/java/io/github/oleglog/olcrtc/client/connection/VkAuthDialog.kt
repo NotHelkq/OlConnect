@@ -204,6 +204,10 @@ internal object VkAuthDialog {
                 ?: Regex("""[?&#]success_token=([^&#\s]+)""").find(rawUrl)
             if (successMatch != null) return successMatch.groupValues[1]
 
+            if (mode == Mode.CAPTCHA) {
+                return null
+            }
+
             // 2. Check access_token (OAuth login)
             val accessMatch = Regex("""[?&#]access_token=([^&#\s]+)""").find(url)
                 ?: Regex("""[?&#]access_token=([^&#\s]+)""").find(rawUrl)
