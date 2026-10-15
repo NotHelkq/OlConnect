@@ -84,6 +84,9 @@ internal object VkAuthHelper {
 
     suspend fun exchangeSuccessToken(challenge: CaptchaChallenge, successToken: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
+            if (successToken.startsWith("$") || successToken.startsWith("vk1.a.")) {
+                return@runCatching successToken
+            }
             val postData = "v=$DEFAULT_VERSION&client_id=$DEFAULT_APP_ID&vk_join_link=" +
                 URLEncoder.encode("https://vk.ru/call/join/${challenge.link}", "UTF-8") +
                 "&name=" + URLEncoder.encode("User", "UTF-8") +

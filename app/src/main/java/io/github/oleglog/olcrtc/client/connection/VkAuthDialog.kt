@@ -52,8 +52,7 @@ internal object VkAuthDialog {
             "https://id.vk.ru/not_robot_captcha?domain=vk.com&variant=popup&blank=1&redirect=" +
                 Uri.encode("https://oauth.vk.com/blank.html")
         } else {
-            "https://oauth.vk.com/authorize?client_id=6287487&scope=all&redirect_uri=" +
-                Uri.encode("https://oauth.vk.com/blank.html") + "&response_type=token"
+            "https://m.vk.com/login"
         }
 
         val displayMetrics = context.resources.displayMetrics
@@ -190,33 +189,47 @@ internal object VkAuthDialog {
             }
         }
 
+        fun extractTokenFromUrl(url: String): String? {
+            if (url.isBlank()) return null
+
+            val keys = listOf("success_token", "access_token", "token", "code", "session_token")
+            for (key in keys) {
+                val pattern = Regex("[?&#]" + key + "=([^&#\\s]+)")
+                val match = pattern.find(url)
+                if (match != null) {
+                    val value = match.groupValues[1]
+                    if (value.isNotBlank()) return value
+                }
+            }
+
+            if (url.contains("blank.html")) {
+                val afterBlank = url.substringAfter("blank.html", "").trim('?', '#')
+                if (afterBlank.isNotBlank()) {
+                    if (afterBlank.contains("=")) {
+                        val valPart = afterBlank.substringAfter("=").substringBefore("&")
+                        if (valPart.isNotBlank()) return valPart
+                    } else {
+                        return afterBlank.substringBefore("&")
+                    }
+                }
+            }
+
+            return null
+        }
+
         fun checkUrlForTokens(url: String): Boolean {
             if (handled || url.isBlank()) return handled
 
-            if (url.contains("success_token=")) {
-                val uri = Uri.parse(url)
-                val token = uri.getQueryParameter("success_token")
-                if (!token.isNullOrBlank()) {
-                    deliverToken(token)
-                    return true
-                }
+            val token = extractTokenFromUrl(url)
+            if (!token.isNullOrBlank()) {
+                deliverToken(token)
+                return true
             }
 
-            if (url.contains("access_token=")) {
-                val uri = Uri.parse(url)
-                var token = uri.getQueryParameter("access_token")
-                if (token.isNullOrBlank()) {
-                    val fragment = uri.fragment.orEmpty()
-                    token = fragment.split("&")
-                        .map { it.split("=", limit = 2) }
-                        .firstOrNull { it.size == 2 && it[0] == "access_token" }
-                        ?.get(1)
-                }
-                if (!token.isNullOrBlank()) {
-                    deliverToken(token)
-                    return true
-                }
+            if (url.contains("blank.html")) {
+                return true
             }
+
             return false
         }
 
@@ -257,6 +270,18 @@ internal object VkAuthDialog {
             }
         }
 
+        val cookiePoller = object : Runnable {
+            override fun run() {
+                if (!handled) {
+                    checkCookiesForToken()
+                    mainHandler.postDelayed(this, 1000)
+                }
+            }
+        }
+        if (mode == Mode.LOGIN) {
+            mainHandler.postDelayed(cookiePoller, 1500)
+        }
+
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun onToken(token: String) {
@@ -275,6 +300,7 @@ internal object VkAuthDialog {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString().orEmpty()
                 if (checkUrlForTokens(url)) return true
+                if (url.contains("blank.html")) return true
                 return false
             }
 
@@ -290,6 +316,12 @@ internal object VkAuthDialog {
                 super.onPageFinished(view, url)
                 url?.let {
                     if (checkUrlForTokens(it)) return
+                }
+                if (url?.contains("blank.html") == true) {
+                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                        val cleanHref = jsHref?.trim('"', '\'') ?: ""
+                        checkUrlForTokens(cleanHref)
+                    }
                 }
                 checkCookiesForToken()
             }
@@ -315,6 +347,7 @@ internal object VkAuthDialog {
         }
 
         dialog.setOnDismissListener {
+            mainHandler.removeCallbacks(cookiePoller)
             runCatching {
                 webView.stopLoading()
                 webView.loadUrl("about:blank")
