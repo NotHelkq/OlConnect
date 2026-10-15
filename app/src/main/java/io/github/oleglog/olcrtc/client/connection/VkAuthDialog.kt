@@ -204,11 +204,7 @@ internal object VkAuthDialog {
                 ?: Regex("""[?&#]success_token=([^&#\s]+)""").find(rawUrl)
             if (successMatch != null) return successMatch.groupValues[1]
 
-            if (mode == Mode.CAPTCHA) {
-                return null
-            }
-
-            // 2. Check access_token (OAuth login)
+            // 2. Check access_token (OAuth login or captcha redirect)
             val accessMatch = Regex("""[?&#]access_token=([^&#\s]+)""").find(url)
                 ?: Regex("""[?&#]access_token=([^&#\s]+)""").find(rawUrl)
             if (accessMatch != null) return accessMatch.groupValues[1]
@@ -349,7 +345,7 @@ internal object VkAuthDialog {
                             try { obj = JSON.parse(obj); } catch(e) {}
                         }
                         if (typeof obj === 'object') {
-                            var t = obj.success_token;
+                            var t = obj.success_token || obj.access_token || obj.token;
                             if (t && typeof t === 'string' && t.length > 10 && t.indexOf(' ') === -1) {
                                 window.AndroidBridge && window.AndroidBridge.onToken(t);
                                 return;
@@ -416,9 +412,11 @@ internal object VkAuthDialog {
                 val url = request?.url?.toString().orEmpty()
                 if (checkUrlForTokens(url)) return true
                 if (url.contains("blank.html")) {
-                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                    view?.evaluateJavascript("window.location.href + ' ' + window.location.hash + ' ' + window.location.search") { jsHref ->
                         val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
-                        checkUrlForTokens(cleanHref)
+                        for (part in cleanHref.split(' ')) {
+                            if (checkUrlForTokens(part)) break
+                        }
                     }
                     return false
                 }
@@ -441,9 +439,11 @@ internal object VkAuthDialog {
                     if (checkUrlForTokens(it)) return
                 }
                 if (url?.contains("blank.html") == true) {
-                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                    view?.evaluateJavascript("window.location.href + ' ' + window.location.hash + ' ' + window.location.search") { jsHref ->
                         val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
-                        checkUrlForTokens(cleanHref)
+                        for (part in cleanHref.split(' ')) {
+                            if (checkUrlForTokens(part)) break
+                        }
                     }
                 }
                 checkCookiesForToken()
@@ -453,9 +453,11 @@ internal object VkAuthDialog {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 url?.let { checkUrlForTokens(it) }
                 if (url?.contains("blank.html") == true) {
-                    view?.evaluateJavascript("window.location.href") { jsHref ->
+                    view?.evaluateJavascript("window.location.href + ' ' + window.location.hash + ' ' + window.location.search") { jsHref ->
                         val cleanHref = jsHref?.trim('"', '\'')?.replace("\\/", "/") ?: ""
-                        checkUrlForTokens(cleanHref)
+                        for (part in cleanHref.split(' ')) {
+                            if (checkUrlForTokens(part)) break
+                        }
                     }
                 }
             }

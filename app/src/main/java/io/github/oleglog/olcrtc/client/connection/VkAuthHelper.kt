@@ -86,15 +86,24 @@ internal object VkAuthHelper {
 
     suspend fun exchangeSuccessToken(challenge: CaptchaChallenge, successToken: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            if (successToken.startsWith("$") || successToken.startsWith("vk1.a.")) {
+            if (successToken.startsWith("$") || successToken.startsWith("vk1.a.") || successToken.startsWith("anonym.")) {
                 return@runCatching successToken
             }
-            val postData = "v=$DEFAULT_VERSION&client_id=$DEFAULT_APP_ID&vk_join_link=" +
-                URLEncoder.encode("https://vk.ru/call/join/${challenge.link}", "UTF-8") +
-                "&name=" + URLEncoder.encode("User", "UTF-8") +
-                "&captcha_sid=" + URLEncoder.encode(challenge.captchaSid, "UTF-8") +
-                "&captcha_key=&is_sound_captcha=0" +
-                "&success_token=" + URLEncoder.encode(successToken, "UTF-8")
+            val params = mutableListOf(
+                "v" to DEFAULT_VERSION,
+                "client_id" to DEFAULT_APP_ID,
+                "vk_join_link" to "https://vk.ru/call/join/${challenge.link}",
+                "name" to "User",
+                "success_token" to successToken,
+            )
+            if (challenge.captchaSid.isNotBlank()) {
+                params.add("captcha_sid" to challenge.captchaSid)
+                params.add("captcha_key" to "")
+                params.add("is_sound_captcha" to "0")
+            }
+            val postData = params.joinToString("&") { (k, v) ->
+                URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")
+            }
             val conn = (URL("https://api.vk.ru/method/calls.getAnonymousToken").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
