@@ -182,11 +182,12 @@ internal object VkAuthDialog {
         val mainHandler = Handler(Looper.getMainLooper())
 
         fun deliverToken(token: String) {
-            if (handled || token.isBlank()) return
+            val clean = token.trim('"', ' ', '\'', '\n', '\r')
+            if (handled || clean.isBlank()) return
             handled = true
             mainHandler.post {
                 runCatching { dialog.dismiss() }
-                onTokenReceived(token.trim())
+                onTokenReceived(clean)
             }
         }
 
@@ -279,25 +280,118 @@ internal object VkAuthDialog {
             mainHandler.postDelayed(cookiePoller, 1500)
         }
 
-        webView.addJavascriptInterface(object {
+        class JsBridge {
             @JavascriptInterface
-            fun onToken(token: String) {
-                deliverToken(token)
+            fun onToken(token: String?) {
+                if (!token.isNullOrBlank()) {
+                    deliverToken(token)
+                }
             }
-        }, "AndroidBridge")
+
+            @JavascriptInterface
+            fun VKCaptchaGetResult(payload: String?) {
+                if (payload.isNullOrBlank()) return
+                try {
+                    val json = JSONObject(payload)
+                    val token = json.optString("token")
+                        .ifEmpty { json.optString("success_token") }
+                    if (token.isNotEmpty()) {
+                        deliverToken(token)
+                        return
+                    }
+                } catch (e: Exception) {
+                    // ignore
+                }
+                deliverToken(payload)
+            }
+
+            @JavascriptInterface
+            fun VKCaptchaCloseCaptcha(payload: String?) {}
+
+            @JavascriptInterface
+            fun VKCaptchaUserClose(payload: String?) {
+                mainHandler.post {
+                    runCatching { dialog.dismiss() }
+                }
+            }
+
+            @JavascriptInterface
+            fun VKCaptchaResize(payload: String?) {}
+
+            @JavascriptInterface
+            fun VKCaptchaLoad(payload: String?) {}
+
+            @JavascriptInterface
+            fun VKCaptchaListenSensorsStart(payload: String?) {}
+
+            @JavascriptInterface
+            fun VKCaptchaListenSensorsStop(payload: String?) {}
+        }
+
+        val bridge = JsBridge()
+        webView.addJavascriptInterface(bridge, "AndroidBridge")
+        webView.addJavascriptInterface(bridge, "VkBridge")
+        webView.addJavascriptInterface(bridge, "VKConnect")
 
         val injectJs = """
             (function() {
                 if (window.__vk_bridge_hooked) return;
                 window.__vk_bridge_hooked = true;
+
+                function extractAndDeliver(obj) {
+                    if (!obj) return;
+                    try {
+                        if (typeof obj === 'string') {
+                            try { obj = JSON.parse(obj); } catch(e) {}
+                        }
+                        if (typeof obj === 'object') {
+                            var t = obj.token || obj.success_token;
+                            if (t && typeof t === 'string' && t.length > 10 && t.indexOf(' ') === -1) {
+                                window.AndroidBridge && window.AndroidBridge.onToken(t);
+                                return;
+                            }
+                            if (obj.response) extractAndDeliver(obj.response);
+                            if (obj.data) extractAndDeliver(obj.data);
+                            if (obj.params) extractAndDeliver(obj.params);
+                        }
+                    } catch(err) {}
+                }
+
+                if (window.fetch) {
+                    var origFetch = window.fetch;
+                    window.fetch = function() {
+                        return origFetch.apply(this, arguments).then(function(res) {
+                            try {
+                                var clone = res.clone();
+                                clone.text().then(function(text) {
+                                    if (text && text.indexOf('success_token') !== -1) {
+                                        try { extractAndDeliver(JSON.parse(text)); } catch(e) {}
+                                    }
+                                }).catch(function() {});
+                            } catch(e) {}
+                            return res;
+                        });
+                    };
+                }
+
+                if (window.XMLHttpRequest) {
+                    var origSend = XMLHttpRequest.prototype.send;
+                    XMLHttpRequest.prototype.send = function() {
+                        this.addEventListener('load', function() {
+                            try {
+                                var text = this.responseText;
+                                if (text && text.indexOf('success_token') !== -1) {
+                                    try { extractAndDeliver(JSON.parse(text)); } catch(e) {}
+                                }
+                            } catch(e) {}
+                        });
+                        return origSend.apply(this, arguments);
+                    };
+                }
+
                 window.addEventListener('message', function(e) {
                     try {
-                        var data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-                        if (data && data.success_token) {
-                            window.AndroidBridge && window.AndroidBridge.onToken(data.success_token);
-                        } else if (data && data.params && data.params.success_token) {
-                            window.AndroidBridge && window.AndroidBridge.onToken(data.params.success_token);
-                        }
+                        extractAndDeliver(e.data);
                     } catch(err) {}
                 });
             })();
@@ -307,6 +401,9 @@ internal object VkAuthDialog {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progressBar.progress = newProgress
                 progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
+                if (newProgress > 20) {
+                    view?.evaluateJavascript(injectJs, null)
+                }
             }
         }
 
